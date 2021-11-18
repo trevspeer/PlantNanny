@@ -135,9 +135,9 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_ADCEx_Calibration_Start(&hadc);
+//  HAL_ADCEx_Calibration_Start(&hadc);
   CCS811_begin();
-  SHT30_begin();
+//  SHT30_begin();
 
   /* USER CODE END 2 */
 
@@ -147,8 +147,21 @@ int main(void)
   uint8_t toggle = 0;
   while (1)
   {
-//    HAL_WWDG_Refresh(&hwwdg);
+    HAL_Delay(5000);
+    HAL_GPIO_TogglePin(air_GPIO_Port, air_Pin);
 
+    uint16_t co2_value = CCS811_get_eCO2();
+    static uint8_t packet[100] = {0};
+    packet[0] = 0xFF;
+    packet[1] = 0xEE;
+    packet[2] = 0xDD;
+    packet[3] = 0x00;
+    memcpy(&packet[4], &co2_value, 2);
+    packet[6] = '\r';
+    HAL_UART_Transmit(&huart1, packet, 7, 1000);
+
+
+/*
     uint16_t co2_value = CCS811_get_eCO2();
     uint16_t temp = SHT30_get_temp();
 	  HAL_ADC_Start(&hadc);
@@ -156,7 +169,6 @@ int main(void)
 	  uint32_t raw = HAL_ADC_GetValue(&hadc);
 
 	  uint8_t data = raw & 0xff;
-//	  HAL_UART_Transmit(&huart1, &data, 1, 1000);
 	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, (test&1)>0);
 	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, (test&2)>0);
 	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, (test&4)>0);
@@ -170,7 +182,10 @@ int main(void)
 	  memcpy(&packet[4], &co2_value, 2);
 	  memcpy(&packet[6], &temp, 2);
 	  memcpy(&packet[8], &data, 1);
-	  HAL_UART_Transmit(&huart1, &packet, 10, 1000);
+	  packet[9] = '\r';
+	  HAL_UART_Transmit(&huart1, packet, 10, 1000);
+
+
 
 	  if (data < 0xAA)
 	  {
@@ -210,7 +225,7 @@ int main(void)
 		  toggle ^= 1;
 		  HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
 	  }
-
+*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
