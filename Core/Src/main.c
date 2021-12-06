@@ -71,10 +71,23 @@ UART_HandleTypeDef huart1;
 /* USER CODE BEGIN PV */
 typedef struct
 {
-  uint8_t command;
-  uint8_t data[16];
-} packet_t;
+  uint8_t name[128];
+  uint8_t air;
+  uint8_t heat;
+  uint8_t water;
+} environment_t;
 
+typedef struct
+{
+  uint8_t air;
+  uint8_t heat;
+  uint8_t light;
+  uint8_t water;
+} setpoint_t;
+
+static volatile uint8_t uart_recv[128] = {0};
+static volatile environment_t conditions = {0};
+static volatile setpoint_t setpoints = {0};
 
 /* USER CODE END PV */
 
@@ -86,14 +99,12 @@ static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
-static void CCS811_begin(void);
+static uint8_t CCS811_begin(void);
 static uint16_t CCS811_get_eCO2(void);
 static void CCS811_check_status(void);
 
 static void SHT30_begin(void);
 static uint16_t SHT30_get_temp(void);
-
-static void send_packet(void);
 
 /* USER CODE END PFP */
 
@@ -135,30 +146,82 @@ int main(void)
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
+  // initialize sensors
 //  HAL_ADCEx_Calibration_Start(&hadc);
-  CCS811_begin();
+//  HAL_ADC_Start(&hadc);
+//  CCS811_begin();
 //  SHT30_begin();
+  HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t test = 0;
-  uint8_t toggle = 0;
+  uint8_t num = 0;
   while (1)
   {
-    HAL_Delay(5000);
-    HAL_GPIO_TogglePin(air_GPIO_Port, air_Pin);
+    HAL_Delay(500);
+    conditions.air = num;
+    conditions.heat = num + 1;
+    conditions.water = num + 2;
+    strcpy(conditions.name, "merry crithmuth");
+    num++;
 
+    // read sensors
+//    HAL_ADC_PollForConversion(&hadc, 1000);
+//    uint32_t raw = HAL_ADC_GetValue(&hadc);
+//    uint16_t co2_value = CCS811_get_eCO2();
+//    uint16_t temp = SHT30_get_temp();
+
+    // send sensor data
+//    static uint8_t packet[100] = {0};
+//    static uint8_t water_label[10] = ''
+//    packet[0] = 0xFF;
+//    packet[1] = 0xEE;
+//    packet[2] = 0xDD;
+//    packet[3] = 0x00;
+//    memcpy(&packet[4], &co2_value, 2);
+//    packet[6] = '\r';
+//    HAL_UART_Transmit(&huart1, packet, 7, 1000);
+
+
+    /* air PSSC
     uint16_t co2_value = CCS811_get_eCO2();
-    static uint8_t packet[100] = {0};
-    packet[0] = 0xFF;
-    packet[1] = 0xEE;
-    packet[2] = 0xDD;
-    packet[3] = 0x00;
-    memcpy(&packet[4], &co2_value, 2);
-    packet[6] = '\r';
-    HAL_UART_Transmit(&huart1, packet, 7, 1000);
+    if (co2_value > 450)
+    {
+      HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_SET);
+    }
+    else
+    {
+      HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_RESET);
+    }
+    */
+
+    /* water PSSC
+    HAL_ADC_Start(&hadc);
+    HAL_ADC_PollForConversion(&hadc, 1000);
+    uint32_t raw = HAL_ADC_GetValue(&hadc);
+    uint8_t data = raw & 0xFF;
+    if (data < 150)
+    {
+      HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_SET);
+    }
+    else
+    {
+      HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_RESET);
+    }
+    */
+
+//    static uint8_t packet[100] = {0};
+//    packet[0] = 0xFF;
+//    packet[1] = 0xEE;
+//    packet[2] = 0xDD;
+//    packet[3] = 0x00;
+//    memcpy(&packet[4], &co2_value, 2);
+//    packet[6] = '\r';
+//    HAL_UART_Transmit(&huart1, packet, 7, 1000);
+
+
 
 
 /*
@@ -397,11 +460,13 @@ static void MX_USART1_UART_Init(void)
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX;
+  huart1.Init.Mode = UART_MODE_TX_RX;
   huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
   huart1.Init.OverSampling = UART_OVERSAMPLING_16;
   huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_RXOVERRUNDISABLE_INIT|UART_ADVFEATURE_DMADISABLEONERROR_INIT;
+  huart1.AdvancedInit.OverrunDisable = UART_ADVFEATURE_OVERRUN_DISABLE;
+  huart1.AdvancedInit.DMADisableonRxError = UART_ADVFEATURE_DMA_DISABLEONRXERROR;
   if (HAL_UART_Init(&huart1) != HAL_OK)
   {
     Error_Handler();
@@ -450,19 +515,21 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-static void CCS811_begin(void)
+static uint8_t CCS811_begin(void)
 {
   uint8_t byte_buffer = CCS811_BOOTLOADER_APP_START;
   if (HAL_OK != HAL_I2C_Master_Transmit(&hi2c1, CCS811_I2C_ADDR << 1, (uint8_t *) &byte_buffer, 1, 1000))
   {
-    while (1);
+    return 1;
   }
 
   byte_buffer = 0b10000;
   if (HAL_OK != HAL_I2C_Mem_Write(&hi2c1, CCS811_I2C_ADDR << 1, CCS811_REG_MEAS_MODE, 1, &byte_buffer, 1, 1000))
   {
-    while (1);
+    return 1;
   }
+
+  return 0;
 }
 
 static uint16_t CCS811_get_eCO2(void)
@@ -509,20 +576,17 @@ static void SHT30_check_status(void)
   }
 }
 
-static void send_packet(void)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-//  static int i = 0;
-//  static uint8_t start[PACKET_START_LEN] = PACKET_START;
-//  static packet p = {0};
-//
-//  memcpy(&p.preamble, start, PACKET_START_LEN);
-//  static uint8_t data[100] = {0};
-//  static uint8_t data_index = 0;
-//  static uint8_t start[3] = {0xFF, 0xEE, 0xDD};
-//
-//
-//  HAL_UART_Transmit(&huart1, &data, 1, 1000);
-
+  if (uart_recv[0] == 0xAA)
+  {
+    HAL_UART_Transmit(huart, &conditions, sizeof(conditions), 500);
+  } else if (uart_recv[0] == 0xBB)
+  {
+    HAL_UART_Receive(huart, uart_recv, 4, 500);
+    memcpy(&setpoints, uart_recv, 4);
+  }
+  HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 }
 
 
