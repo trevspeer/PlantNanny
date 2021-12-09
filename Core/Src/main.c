@@ -165,18 +165,13 @@ int main(void)
   // initialize uart rx
   HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 
-//  HAL_FLASH_Unlock();
-//  EE_Init();
-//  uint16_t VirtAddVarTab[NB_OF_VAR] = {0x5555, 0x6666, 0x7777};
-//  uint16_t VarDataTab[NB_OF_VAR] = {0, 0, 0};
-//  uint16_t VarValue = 0;
-
-  strcpy(conditions.name, "grand wizard oscar fucking mayer");
-
-  // TODO initialize saved state
-  //
-  //
-  //
+  // demo setpoints
+  strcpy(setpoints.name, "demo");
+  setpoints.air = 550;
+  setpoints.light = 24;
+  setpoints.heat = 81;
+  setpoints.water = 60;
+  enable_auto = 1;
 
   /* USER CODE END 2 */
 
@@ -184,19 +179,25 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+//    HAL_IWDG_Refresh(&hiwdg); // must refresh every 1/(40kHz/32/4096) seconds
+
+    // polling delay
     HAL_Delay(1000);
+
+    // read sensors
     HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
     HAL_RTC_GetDate(&hrtc, &data, RTC_FORMAT_BIN);
-    // read sensors
     uint16_t hours = time.Hours;
     uint16_t moisture = EK1940_get_moisture();
     uint16_t co2 = CCS811_get_eCO2();
     uint16_t temp = SHT30_get_temp();
 
+    // update conditions
     conditions.air = co2;
     conditions.heat = temp;
     conditions.water = moisture;
 
+    // if auto control is on, toggle actuators appropriately
     if (enable_auto)
     {
       memcpy(conditions.name, setpoints.name, 128);
@@ -496,7 +497,7 @@ static uint16_t CCS811_get_eCO2(void)
   uint8_t result[2] = {0};
   if (HAL_OK != HAL_I2C_Mem_Read(&hi2c1, CCS811_I2C_ADDR << 1, CCS811_REG_ALG_RESULT_DATA, 1, (uint8_t *) &result, 2, 1000))
     {
-      while (1);
+//      while (1);
     }
   return (((uint16_t) result[0] << 8) | (uint16_t) result[1]);
 }
@@ -506,7 +507,7 @@ static void CCS811_check_status(void)
   uint8_t status = 0;
   if (HAL_OK != HAL_I2C_Mem_Read(&hi2c1, CCS811_I2C_ADDR << 1, CCS811_REG_STATUS, 1, &status, 1, 1000))
   {
-    while (1);
+//    while (1);
   }
   __asm volatile ("nop");
 }
@@ -522,7 +523,7 @@ static uint16_t SHT30_get_temp(void)
   uint16_t temp = 0;
   if (HAL_OK != HAL_I2C_Mem_Read(&hi2c1, SHT30_I2C_ADDR << 1, SHT30_COMMAND_READ_ONESHOT, 2, recv, 6, 1000))
   {
-    while (1);
+//    while (1);
   }
   temp = (uint16_t) recv[0] << 8 | recv[1];
   return (uint16_t) ((temp / 256 + 0.5) * 315 / 256 - 49); // sensor output to degrees F equation, page 30 of SHT30 datasheet
@@ -533,7 +534,7 @@ static void SHT30_check_status(void)
   uint8_t recv[3] = {0};
   if (HAL_OK != HAL_I2C_Mem_Read(&hi2c1, SHT30_I2C_ADDR << 1, SHT30_COMMAND_READ_STATUS, 2, recv, 3, 1000))
   {
-    while (1);
+//    while (1);
   }
 }
 
