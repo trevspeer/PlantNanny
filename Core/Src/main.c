@@ -24,6 +24,7 @@
 /* USER CODE BEGIN Includes */
 #include <stdio.h>
 #include <string.h>
+//#include <eeprom.h>
 
 /* USER CODE END Includes */
 
@@ -66,28 +67,34 @@ ADC_HandleTypeDef hadc;
 
 I2C_HandleTypeDef hi2c1;
 
+RTC_HandleTypeDef hrtc;
+
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 typedef struct
 {
   uint8_t name[128];
-  uint8_t air;
-  uint8_t heat;
-  uint8_t water;
+  uint16_t air;
+  uint16_t heat;
+  uint16_t water;
 } environment_t;
 
 typedef struct
 {
-  uint8_t air;
-  uint8_t heat;
-  uint8_t light;
-  uint8_t water;
+  uint8_t name[128];
+  uint16_t air;
+  uint16_t heat;
+  uint16_t light;
+  uint16_t water;
 } setpoint_t;
 
 static volatile uint8_t uart_recv[128] = {0};
 static volatile environment_t conditions = {0};
 static volatile setpoint_t setpoints = {0};
+static volatile uint8_t enable_auto = 0;
+static volatile RTC_TimeTypeDef time = {0};
+static volatile RTC_DateTypeDef data = {0};
 
 /* USER CODE END PV */
 
@@ -97,6 +104,7 @@ static void MX_GPIO_Init(void);
 static void MX_ADC_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 
 static uint8_t CCS811_begin(void);
@@ -105,6 +113,8 @@ static void CCS811_check_status(void);
 
 static void SHT30_begin(void);
 static uint16_t SHT30_get_temp(void);
+
+static uint16_t EK1940_get_moisture(void);
 
 /* USER CODE END PFP */
 
@@ -144,151 +154,57 @@ int main(void)
   MX_ADC_Init();
   MX_USART1_UART_Init();
   MX_I2C1_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
 
   // initialize sensors
-//  HAL_ADCEx_Calibration_Start(&hadc);
-//  HAL_ADC_Start(&hadc);
-//  CCS811_begin();
-//  SHT30_begin();
+  HAL_ADCEx_Calibration_Start(&hadc);
+  CCS811_begin();
+  SHT30_begin();
+
+  // initialize uart rx
   HAL_UART_Receive_IT(&huart1, uart_recv, 1);
+
+//  HAL_FLASH_Unlock();
+//  EE_Init();
+//  uint16_t VirtAddVarTab[NB_OF_VAR] = {0x5555, 0x6666, 0x7777};
+//  uint16_t VarDataTab[NB_OF_VAR] = {0, 0, 0};
+//  uint16_t VarValue = 0;
+
+  strcpy(conditions.name, "grand wizard oscar fucking mayer");
+
+  // TODO initialize saved state
+  //
+  //
+  //
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  uint8_t num = 0;
   while (1)
   {
-    HAL_Delay(500);
-    conditions.air = num;
-    conditions.heat = num + 1;
-    conditions.water = num + 2;
-    strcpy(conditions.name, "merry crithmuth");
-    num++;
-
+    HAL_Delay(1000);
+    HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &data, RTC_FORMAT_BIN);
     // read sensors
-//    HAL_ADC_PollForConversion(&hadc, 1000);
-//    uint32_t raw = HAL_ADC_GetValue(&hadc);
-//    uint16_t co2_value = CCS811_get_eCO2();
-//    uint16_t temp = SHT30_get_temp();
-
-    // send sensor data
-//    static uint8_t packet[100] = {0};
-//    static uint8_t water_label[10] = ''
-//    packet[0] = 0xFF;
-//    packet[1] = 0xEE;
-//    packet[2] = 0xDD;
-//    packet[3] = 0x00;
-//    memcpy(&packet[4], &co2_value, 2);
-//    packet[6] = '\r';
-//    HAL_UART_Transmit(&huart1, packet, 7, 1000);
-
-
-    /* air PSSC
-    uint16_t co2_value = CCS811_get_eCO2();
-    if (co2_value > 450)
-    {
-      HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_RESET);
-    }
-    */
-
-    /* water PSSC
-    HAL_ADC_Start(&hadc);
-    HAL_ADC_PollForConversion(&hadc, 1000);
-    uint32_t raw = HAL_ADC_GetValue(&hadc);
-    uint8_t data = raw & 0xFF;
-    if (data < 150)
-    {
-      HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_SET);
-    }
-    else
-    {
-      HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_RESET);
-    }
-    */
-
-//    static uint8_t packet[100] = {0};
-//    packet[0] = 0xFF;
-//    packet[1] = 0xEE;
-//    packet[2] = 0xDD;
-//    packet[3] = 0x00;
-//    memcpy(&packet[4], &co2_value, 2);
-//    packet[6] = '\r';
-//    HAL_UART_Transmit(&huart1, packet, 7, 1000);
-
-
-
-
-/*
-    uint16_t co2_value = CCS811_get_eCO2();
+    uint16_t hours = time.Hours;
+    uint16_t moisture = EK1940_get_moisture();
+    uint16_t co2 = CCS811_get_eCO2();
     uint16_t temp = SHT30_get_temp();
-	  HAL_ADC_Start(&hadc);
-	  HAL_ADC_PollForConversion(&hadc, 1000);
-	  uint32_t raw = HAL_ADC_GetValue(&hadc);
 
-	  uint8_t data = raw & 0xff;
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_6, (test&1)>0);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_7, (test&2)>0);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_8, (test&4)>0);
-	  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_9, (test&8)>0);
+    conditions.air = co2;
+    conditions.heat = temp;
+    conditions.water = moisture;
 
-	  static uint8_t packet[100] = {0};
-	  packet[0] = 0xFF;
-	  packet[1] = 0xEE;
-	  packet[2] = 0xDD;
-	  packet[3] = 0x00;
-	  memcpy(&packet[4], &co2_value, 2);
-	  memcpy(&packet[6], &temp, 2);
-	  memcpy(&packet[8], &data, 1);
-	  packet[9] = '\r';
-	  HAL_UART_Transmit(&huart1, packet, 10, 1000);
-
-
-
-	  if (data < 0xAA)
-	  {
-	    HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_SET);
-	  }
-	  else
-	  {
-	    HAL_GPIO_WritePin(water_GPIO_Port, water_Pin, GPIO_PIN_RESET);
-	  }
-
-	  if (co2_value > 500)
-	  {
-	    HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_SET);
-	  }
-	  else
-	  {
-	    HAL_GPIO_WritePin(air_GPIO_Port, air_Pin, GPIO_PIN_RESET);
-	  }
-
-	  if (temp > 29000)
+    if (enable_auto)
     {
-      HAL_GPIO_WritePin(heat_GPIO_Port, heat_Pin, GPIO_PIN_SET);
+      memcpy(conditions.name, setpoints.name, 128);
+      HAL_GPIO_WritePin(light_GPIO_Port,  light_Pin,  (hours < setpoints.light));
+      HAL_GPIO_WritePin(air_GPIO_Port,    air_Pin,    (co2 < setpoints.air));
+      HAL_GPIO_WritePin(heat_GPIO_Port,   heat_Pin,   (temp < setpoints.heat));
+      HAL_GPIO_WritePin(water_GPIO_Port,  water_Pin,  (moisture < setpoints.water));
     }
-    else
-    {
-      HAL_GPIO_WritePin(heat_GPIO_Port, heat_Pin, GPIO_PIN_RESET);
-    }
-
-	  HAL_Delay(250);
-	  if (toggle) {
-		  test = (test-1);
-	  } else {
-		  test = (test+1);
-	  }
-
-	  if ((test & 0xF) == 15 || (test & 0xF) == 0) {
-		  toggle ^= 1;
-		  HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
-	  }
-*/
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -310,12 +226,13 @@ void SystemClock_Config(void)
   * in the RCC_OscInitTypeDef structure.
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_HSI14
-                              |RCC_OSCILLATORTYPE_HSI48;
+                              |RCC_OSCILLATORTYPE_HSI48|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSI48State = RCC_HSI48_ON;
   RCC_OscInitStruct.HSI14State = RCC_HSI14_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.HSI14CalibrationValue = 16;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -333,9 +250,11 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
-  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1;
+  PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USART1|RCC_PERIPHCLK_I2C1
+                              |RCC_PERIPHCLK_RTC;
   PeriphClkInit.Usart1ClockSelection = RCC_USART1CLKSOURCE_PCLK1;
   PeriphClkInit.I2c1ClockSelection = RCC_I2C1CLKSOURCE_HSI;
+  PeriphClkInit.RTCClockSelection = RCC_RTCCLKSOURCE_LSI;
   if (HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit) != HAL_OK)
   {
     Error_Handler();
@@ -441,6 +360,46 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /** Enable Calibration
+  */
+  if (HAL_RTCEx_SetCalibrationOutPut(&hrtc, RTC_CALIBOUTPUT_1HZ) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
+}
+
+/**
   * @brief USART1 Initialization Function
   * @param None
   * @retval None
@@ -487,8 +446,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitTypeDef GPIO_InitStruct = {0};
 
   /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOC_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
@@ -560,11 +519,13 @@ static void SHT30_begin(void)
 static uint16_t SHT30_get_temp(void)
 {
   uint8_t recv[6] = {0};
+  uint16_t temp = 0;
   if (HAL_OK != HAL_I2C_Mem_Read(&hi2c1, SHT30_I2C_ADDR << 1, SHT30_COMMAND_READ_ONESHOT, 2, recv, 6, 1000))
   {
     while (1);
   }
-  return (uint16_t) recv[0] << 8 | recv[1];
+  temp = (uint16_t) recv[0] << 8 | recv[1];
+  return (uint16_t) ((temp / 256 + 0.5) * 315 / 256 - 49); // sensor output to degrees F equation, page 30 of SHT30 datasheet
 }
 
 static void SHT30_check_status(void)
@@ -576,15 +537,44 @@ static void SHT30_check_status(void)
   }
 }
 
+static uint16_t EK1940_get_moisture(void)
+{
+  HAL_ADC_Start(&hadc);
+  HAL_ADC_PollForConversion(&hadc, 1000);
+  uint32_t raw = HAL_ADC_GetValue(&hadc);
+  return 100 - ((100 * (raw - 75.0)) / (205 - 75));
+}
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (uart_recv[0] == 0xAA)
   {
+    // get name and conditions
     HAL_UART_Transmit(huart, &conditions, sizeof(conditions), 500);
-  } else if (uart_recv[0] == 0xBB)
+  }
+  else if (uart_recv[0] == 0xBB)
   {
-    HAL_UART_Receive(huart, uart_recv, 4, 500);
-    memcpy(&setpoints, uart_recv, 4);
+    if (HAL_OK == HAL_UART_Receive(huart, &setpoints, 136, 500))
+    {
+      enable_auto = 1;
+    }
+//    memcpy(&setpoints, uart_recv, 4);
+  }
+  else if (uart_recv[0] == 0xCC)
+  {
+    HAL_GPIO_TogglePin(air_GPIO_Port, air_Pin);
+  }
+  else if (uart_recv[0] == 0xDD)
+  {
+    HAL_GPIO_TogglePin(heat_GPIO_Port, heat_Pin);
+  }
+  else if (uart_recv[0] == 0xEE)
+  {
+    HAL_GPIO_TogglePin(light_GPIO_Port, light_Pin);
+  }
+  else if (uart_recv[0] == 0xFF)
+  {
+    HAL_GPIO_TogglePin(water_GPIO_Port, water_Pin);
   }
   HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 }
