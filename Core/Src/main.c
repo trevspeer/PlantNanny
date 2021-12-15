@@ -94,7 +94,8 @@ static volatile environment_t conditions = {0};
 static volatile setpoint_t setpoints = {0};
 static volatile uint8_t enable_auto = 0;
 static volatile RTC_TimeTypeDef time = {0};
-static volatile RTC_DateTypeDef data = {0};
+static volatile RTC_DateTypeDef date = {0};
+const uint32_t FLASH_DATA_ADDR = 0x0803F000;
 
 /* USER CODE END PV */
 
@@ -106,6 +107,9 @@ static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
+
+void flash_write(uint32_t page_address, uint32_t *data, uint32_t num_bytes);
+void flash_read(uint32_t page_address, uint8_t *data, uint32_t num_bytes);
 
 static uint8_t CCS811_begin(void);
 static uint16_t CCS811_get_eCO2(void);
@@ -158,20 +162,39 @@ int main(void)
   /* USER CODE BEGIN 2 */
 
   // initialize sensors
+
+  HAL_Delay(1000);
   HAL_ADCEx_Calibration_Start(&hadc);
   CCS811_begin();
   SHT30_begin();
 
-  // initialize uart rx
+  // prep first rx transfer
   HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 
   // demo setpoints
-  strcpy(setpoints.name, "demo");
-  setpoints.air = 550;
-  setpoints.light = 24;
-  setpoints.heat = 81;
-  setpoints.water = 60;
-  enable_auto = 1;
+//  strcpy(setpoints.name, "demo");
+//  setpoints.air = 550;
+//  setpoints.light = 24;
+//  setpoints.heat = 81;
+//  setpoints.water = 60;
+//  enable_auto = 1;
+
+//  uint32_t addr = 0x0803F000;
+//  uint64_t data = 0x0123456789ABCDEF;
+//  uint64_t data_read = 0;
+//  flash_write(addr, &data, 8);
+//  flash_read(addr, &data_read, 8);
+
+//  uint32_t sz = sizeof(setpoints);
+//  flash_write(addr, &setpoints, sizeof(setpoints));
+//  flash_read(addr, &setpoints, sizeof(setpoints));
+
+  flash_read(FLASH_DATA_ADDR, &setpoints, sizeof(setpoints));
+  if (setpoints.name[0] != 0xFF)
+  {
+    enable_auto = 1;
+  }
+
 
   /* USER CODE END 2 */
 
@@ -179,14 +202,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-//    HAL_IWDG_Refresh(&hiwdg); // must refresh every 1/(40kHz/32/4096) seconds
-
     // polling delay
     HAL_Delay(1000);
 
     // read sensors
     HAL_RTC_GetTime(&hrtc, &time, RTC_FORMAT_BIN);
-    HAL_RTC_GetDate(&hrtc, &data, RTC_FORMAT_BIN);
+    HAL_RTC_GetDate(&hrtc, &date, RTC_FORMAT_BIN);
     uint16_t hours = time.Hours;
     uint16_t moisture = EK1940_get_moisture();
     uint16_t co2 = CCS811_get_eCO2();
@@ -475,6 +496,25 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void flash_write(uint32_t page_address, uint32_t *data, uint32_t num_bytes)
+{
+  HAL_FLASH_Unlock();
+  FLASH_PageErase(page_address);
+  CLEAR_BIT (FLASH->CR, (FLASH_CR_PER));
+  uint32_t runs = (num_bytes + 3) / 4;
+  for (uint32_t i = 0; i < runs; i++)
+  {
+    HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, (page_address + 4U * i), *(data + i));
+  }
+  CLEAR_BIT (FLASH->CR, (FLASH_CR_PG));
+  HAL_FLASH_Lock();
+}
+
+void flash_read(uint32_t page_address, uint8_t *data, uint32_t num_bytes)
+{
+  memcpy(data, page_address, num_bytes);
+}
+
 static uint8_t CCS811_begin(void)
 {
   uint8_t byte_buffer = CCS811_BOOTLOADER_APP_START;
@@ -550,16 +590,15 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (uart_recv[0] == 0xAA)
   {
-    // get name and conditions
     HAL_UART_Transmit(huart, &conditions, sizeof(conditions), 500);
   }
   else if (uart_recv[0] == 0xBB)
   {
     if (HAL_OK == HAL_UART_Receive(huart, &setpoints, 136, 500))
     {
+      flash_write(FLASH_DATA_ADDR, &setpoints, sizeof(setpoints));
       enable_auto = 1;
     }
-//    memcpy(&setpoints, uart_recv, 4);
   }
   else if (uart_recv[0] == 0xCC)
   {
@@ -577,6 +616,8 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
   {
     HAL_GPIO_TogglePin(water_GPIO_Port, water_Pin);
   }
+
+  // prep next rx transfer
   HAL_UART_Receive_IT(&huart1, uart_recv, 1);
 }
 
